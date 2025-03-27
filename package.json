@@ -1,0 +1,22 @@
+{
+  "name": "multitrack-vcs",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": [
+    "vcs",
+    "audio",
+    "multitrack"
+  ],
+  "author": "Timothy Rehenel",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@types/node": "^22.13.14",
+    "typescript": "^5.8.2"
+  }
+}
