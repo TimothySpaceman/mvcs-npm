@@ -1,3 +1,1 @@
-export const sayHi = () => {
-    console.log("Hi from VCS!")
-}
+export * from './storage/index.js';
