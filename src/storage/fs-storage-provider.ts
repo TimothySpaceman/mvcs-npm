@@ -1,8 +1,9 @@
-import {File, StorageProvider, DirectoryContent, DirectoryContentDeep} from "./types.js";
+import {DirectoryContent, DirectoryContentDeep, IStorageProvider} from "./types.js";
+import {File} from "./file.js";
 import fs from "fs";
 import path from "node:path";
 
-export class FsStorageProvider implements StorageProvider {
+export class FsStorageProvider implements IStorageProvider {
     constructor() {
     }
 
