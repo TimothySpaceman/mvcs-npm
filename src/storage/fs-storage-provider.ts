@@ -8,6 +8,19 @@ export class FsStorageProvider implements IStorageProvider {
     constructor() {
     }
 
+    async exists(path: string) {
+        try {
+            await fs.promises.access(path)
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    async isFile(path: string) {
+        return (await fs.promises.stat(path)).isFile();
+    }
+
     async readFile(filePath: string): Promise<File> {
         await fs.promises.access(filePath, fs.constants.R_OK);
         return new File(path.resolve(filePath));
@@ -41,12 +54,16 @@ export class FsStorageProvider implements IStorageProvider {
         return new File(to);
     }
 
+    async isDir(path: string) {
+        return (await fs.promises.stat(path)).isDirectory();
+    }
+
     async readDir(dirPath: string, ignore: string[] = []): Promise<string[]> {
-        return await glob.glob("*", {cwd: dirPath, ignore, noext: false});
+        return await glob.glob("*", {cwd: dirPath, ignore, noext: false, absolute: false});
     }
 
     async readDirDeep(dirPath: string, ignore: string[] = []): Promise<string[]> {
-        return await glob.glob("**/*", {cwd: dirPath, ignore, noext: false});
+        return await glob.glob("**/*", {cwd: dirPath, ignore, noext: false, absolute: false});
     }
 
     async createDir(dirPath: string): Promise<string> {
