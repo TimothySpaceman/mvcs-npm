@@ -50,7 +50,7 @@ export class Project {
 
     private constructor(sp: IStorageProvider, workingDir: string, authorId?: string, title?: string, description?: string) {
         this.sp = sp;
-        this.workingDir = workingDir;
+        this.workingDir = path.resolve(workingDir);
 
         if (authorId && title) {
             this.id = randomUUID();
@@ -94,7 +94,10 @@ export class Project {
     }
 
     private fromJSON(dump: ProjectDump) {
-        Object.assign(this as Object, dump);
+        const keysToImport = PROJECT_DUMP_KEYS.filter(k => Object.keys(dump).includes(k));
+        for (const key of keysToImport) {
+            (this as any)[key] = dump[key];
+        }
     }
 
     async load() {
@@ -157,9 +160,8 @@ export class Project {
         return contentPath;
     }
 
-    async commit(paths: string[], authorId: string, title: string, description: string = ""): Promise<Commit> {
+    getLastCommit(): Commit | undefined {
         let lastCommitId: string | undefined = undefined;
-        let lastItems: ItemList = {};
         if (Object.keys(this.commits).length > 0 && this.currentBranch) {
             lastCommitId = this.branches[this.currentBranch];
             if (!lastCommitId) {
@@ -169,13 +171,17 @@ export class Project {
             if (!this.commits[lastCommitId]) {
                 throw new Error("Current branch commit not found in the Commit List");
             }
-
-            lastItems = this.getCommitItems(lastCommitId);
         }
+        return lastCommitId ? this.commits[lastCommitId] : undefined;
+    }
+
+    async commit(paths: string[], authorId: string, title: string, description: string = ""): Promise<Commit> {
+        const lastCommit = this.getLastCommit();
+        let lastItems: ItemList = lastCommit ? this.getCommitItems(lastCommit.id) : {};
 
         const newCommit: Commit = {
             id: randomUUID(),
-            parent: lastCommitId,
+            parent: lastCommit?.id,
             children: [],
             authorId,
             title,
@@ -185,6 +191,14 @@ export class Project {
         };
 
         for (const filePath of paths) {
+            if (!await this.sp.exists(filePath)) {
+                const lastItem = Object.values(lastItems).find(i => i.path === filePath);
+                if (lastItem) {
+                    newCommit.changes.push({from: lastItem.id});
+                }
+                continue;
+            }
+
             if (await this.sp.isDir(filePath)) continue;
 
             const lastItem = Object.values(lastItems).find(i => i.path === filePath)
