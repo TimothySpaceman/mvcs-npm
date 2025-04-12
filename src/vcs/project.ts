@@ -1,10 +1,11 @@
 import {IStorageProvider} from "../storage/index.js";
 import path from "node:path";
 import {randomUUID} from "crypto";
-import {BranchList, Commit, CommitList, ItemList} from "./types.js";
+import {BranchList, Commit, CommitList, Item, ItemChange, ItemList, Status} from "./types.js";
 
 const PROJECT_DIR = ".mvcs";
 const CONTENT_DIR = "contents";
+const CONTENT_DUMMY = "DUMMY";
 
 type ProjectDump = {
     id: string;
@@ -177,7 +178,13 @@ export class Project {
 
     async commit(paths: string[], authorId: string, title: string, description: string = ""): Promise<Commit> {
         const lastCommit = this.getLastCommit();
-        let lastItems: ItemList = lastCommit ? this.getCommitItems(lastCommit.id) : {};
+        let {newItems, changes}: Status = await this.status(paths);
+        for (const newItem of Object.values(newItems)) {
+            if (newItem.content === CONTENT_DUMMY) {
+                newItem.content = await this.addContent(newItem.path);
+            }
+            this.items[newItem.id] = newItem;
+        }
 
         const newCommit: Commit = {
             id: randomUUID(),
@@ -187,48 +194,8 @@ export class Project {
             title,
             description,
             date: (new Date()).toISOString(),
-            changes: []
+            changes
         };
-
-        for (const filePath of paths) {
-            if (!await this.sp.exists(filePath)) {
-                const lastItem = Object.values(lastItems).find(i => i.path === filePath);
-                if (lastItem) {
-                    newCommit.changes.push({from: lastItem.id});
-                }
-                continue;
-            }
-
-            if (await this.sp.isDir(filePath)) continue;
-
-            const lastItem = Object.values(lastItems).find(i => i.path === filePath)
-            if (lastItem) {
-                const lastContent = await this.sp.readFile(path.join(this.workingDir, PROJECT_DIR, CONTENT_DIR, lastItem.content));
-                const lastHash = await lastContent.getDataHash();
-                const newHash = await (await this.sp.readFile(filePath)).getDataHash();
-                if (newHash === lastHash) {
-                    continue;
-                }
-
-                const newItem = {
-                    id: randomUUID(),
-                    content: await this.addContent(filePath),
-                    path: filePath
-                }
-
-                this.items[newItem.id] = newItem;
-                newCommit.changes.push({from: lastItem.id, to: newItem.id});
-            } else {
-                const newItem = {
-                    id: randomUUID(),
-                    content: await this.addContent(filePath),
-                    path: filePath
-                }
-
-                this.items[newItem.id] = newItem;
-                newCommit.changes.push({to: newItem.id});
-            }
-        }
 
         if (Object.keys(this.commits).length === 0) {
             this.rootCommitId = newCommit.id
@@ -242,5 +209,77 @@ export class Project {
         this.branches[this.currentBranch] = newCommit.id;
 
         return newCommit;
+    }
+
+    async status(paths: string[] | undefined = undefined): Promise<Status> {
+        const createItem = (content: string, path: string): Item => ({
+            id: randomUUID(),
+            content,
+            path
+        })
+
+        const lastCommit = this.getLastCommit();
+        const lastItems: ItemList = lastCommit ? this.getCommitItems(lastCommit.id) : {};
+
+        if (!paths) {
+            const currentPaths = await this.sp.readDirDeep(this.workingDir, [PROJECT_DIR])
+            const lastCommitPaths = Object.values(lastItems).map(i => i.path)
+            paths = Array.from(new Set([...currentPaths, ...lastCommitPaths]));
+        } else {
+            paths = Array.from(new Set(paths));
+        }
+
+        const newItems: ItemList = {}
+        const changes: ItemChange[] = [];
+
+        fileLoop: for (const filePath of paths) {
+            if (await this.sp.isDir(filePath)) continue;
+
+            const lastItem = Object.values(lastItems).find(i => i.path === filePath);
+
+            // Removed Files
+            if (!await this.sp.exists(filePath)) {
+                if (lastItem) changes.push({from: lastItem.id});
+                continue;
+            }
+
+            const newHash = await (await this.sp.readFile(filePath)).getDataHash();
+
+            // Changed Files
+            if (lastItem) {
+                const lastContentPath = path.join(this.workingDir, PROJECT_DIR, CONTENT_DIR, lastItem.content);
+                const lastHash = await (await this.sp.readFile(lastContentPath)).getDataHash();
+
+                if (newHash === lastHash) continue;
+
+                const newItem = createItem(CONTENT_DUMMY, filePath);
+                newItems[newItem.id] = newItem;
+                changes.push({from: lastItem.id, to: newItem.id});
+                continue;
+            }
+
+            // Identical (Renamed / Copied / Moved) Files (to avoid redundant content files)
+            for (const item of Object.values(lastItems)) {
+                const lastContentPath = path.join(this.workingDir, PROJECT_DIR, CONTENT_DIR, item.content);
+                const lastHash = await (await this.sp.readFile(lastContentPath)).getDataHash();
+                if (newHash === lastHash) {
+                    const newItem = createItem(item.content, filePath);
+                    newItems[newItem.id] = newItem;
+                    changes.push({to: newItem.id})
+                    continue fileLoop;
+                }
+            }
+
+            // New Files
+            const newItem = createItem(CONTENT_DUMMY, filePath);
+            newItems[newItem.id] = newItem;
+            changes.push({to: newItem.id});
+        }
+
+        return {
+            lastItems,
+            newItems,
+            changes
+        }
     }
 }

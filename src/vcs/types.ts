@@ -31,3 +31,9 @@ export type CommitList = {
 export type BranchList = {
     [name: string]: string
 }
+
+export type Status = {
+    lastItems: ItemList,
+    newItems: ItemList,
+    changes: ItemChange[]
+}

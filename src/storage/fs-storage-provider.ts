@@ -18,7 +18,11 @@ export class FsStorageProvider implements IStorageProvider {
     }
 
     async isFile(path: string) {
-        return (await fs.promises.stat(path)).isFile();
+        try {
+            return (await fs.promises.stat(path)).isFile();
+        } catch {
+            return false;
+        }
     }
 
     async readFile(filePath: string): Promise<File> {
@@ -55,7 +59,11 @@ export class FsStorageProvider implements IStorageProvider {
     }
 
     async isDir(path: string) {
-        return (await fs.promises.stat(path)).isDirectory();
+        try {
+            return (await fs.promises.stat(path)).isDirectory();
+        } catch {
+            return false;
+        }
     }
 
     async readDir(dirPath: string, ignore: string[] = []): Promise<string[]> {
