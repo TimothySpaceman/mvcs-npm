@@ -3,7 +3,7 @@ import path from "node:path";
 import {randomUUID} from "crypto";
 import {BranchList, Commit, CommitList, Item, ItemChange, ItemList, Status} from "./types.js";
 
-const PROJECT_DIR = ".mvcs";
+export const PROJECT_DIR = ".mvcs";
 const CONTENT_DIR = "contents";
 const CONTENT_DUMMY = "DUMMY";
 
@@ -121,6 +121,27 @@ export class Project {
         await file.writeData(Buffer.from(JSON.stringify(this.toJSON())));
     }
 
+    async addContent(sourcePath: string) {
+        const file = await this.sp.readFile(sourcePath);
+        const contentPath = `${file.name}-${randomUUID()}${file.extension ? "." + file.extension : ""}`;
+        await this.sp.copyFile(sourcePath, path.join(this.workingDir, PROJECT_DIR, CONTENT_DIR, contentPath));
+        return contentPath;
+    }
+
+    getCurrentCommit(): Commit | undefined {
+        let currentCommitId: string | undefined = this.currentCommitId;
+
+        if (!currentCommitId && Object.keys(this.commits).length > 0) {
+            throw new Error("No current commit");
+        }
+
+        if (currentCommitId && !this.commits[currentCommitId]) {
+            throw new Error("Current commit not found in the Commit List");
+        }
+
+        return currentCommitId ? this.commits[currentCommitId] : undefined;
+    }
+
     getCommitItems(commitId: string): ItemList {
         if (!this.commits[commitId]) {
             throw new Error(`Commit ${commitId} not found in the Commit List`);
@@ -157,70 +178,6 @@ export class Project {
         }
 
         return commitItems;
-    }
-
-    async addContent(sourcePath: string) {
-        const file = await this.sp.readFile(sourcePath);
-        const contentPath = `${file.name}-${randomUUID()}${file.extension ? "." + file.extension : ""}`;
-        await this.sp.copyFile(sourcePath, path.join(this.workingDir, PROJECT_DIR, CONTENT_DIR, contentPath));
-        return contentPath;
-    }
-
-    getCurrentCommit(): Commit | undefined {
-        let currentCommitId: string | undefined = this.currentCommitId;
-
-        if (!currentCommitId && Object.keys(this.commits).length > 0) {
-            throw new Error("No current commit");
-        }
-
-        if (currentCommitId && !this.commits[currentCommitId]) {
-            throw new Error("Current commit not found in the Commit List");
-        }
-
-        return currentCommitId ? this.commits[currentCommitId] : undefined;
-    }
-
-    async commit(files: string[], authorId: string, title: string, description: string = ""): Promise<Commit> {
-        if (
-            !this.currentBranch ||
-            !this.branches[this.currentBranch] ||
-            this.branches[this.currentBranch] !== this.currentCommitId
-        ) {
-            if (Object.keys(this.commits).length > 0) {
-                throw new Error("Cannot commit when not at the branch")
-            }
-        }
-
-        const lastCommit = this.getCurrentCommit();
-        let {newItems, changes}: Status = await this.status(files);
-        for (const newItem of Object.values(newItems)) {
-            if (newItem.content === CONTENT_DUMMY) {
-                newItem.content = await this.addContent(newItem.path);
-            }
-            this.items[newItem.id] = newItem;
-        }
-
-        const newCommit: Commit = {
-            id: randomUUID(),
-            parent: lastCommit?.id,
-            children: [],
-            authorId,
-            title,
-            description,
-            date: (new Date()).toISOString(),
-            changes
-        };
-
-        if (Object.keys(this.commits).length === 0) {
-            this.rootCommitId = newCommit.id
-            this.currentBranch = "main"
-            this.defaultBranch = this.currentBranch;
-        }
-        this.commits[newCommit.id] = newCommit;
-        this.branches[this.currentBranch as string] = newCommit.id;
-        this.currentCommitId = newCommit.id;
-
-        return newCommit;
     }
 
     async status(files: string[] | undefined = undefined): Promise<Status> {
@@ -296,6 +253,49 @@ export class Project {
         }
     }
 
+    async commit(files: string[], authorId: string, title: string, description: string = ""): Promise<Commit> {
+        if (
+            !this.currentBranch ||
+            !this.branches[this.currentBranch] ||
+            this.branches[this.currentBranch] !== this.currentCommitId
+        ) {
+            if (Object.keys(this.commits).length > 0) {
+                throw new Error("Cannot commit when not at the branch")
+            }
+        }
+
+        const lastCommit = this.getCurrentCommit();
+        let {newItems, changes}: Status = await this.status(files);
+        for (const newItem of Object.values(newItems)) {
+            if (newItem.content === CONTENT_DUMMY) {
+                newItem.content = await this.addContent(newItem.path);
+            }
+            this.items[newItem.id] = newItem;
+        }
+
+        const newCommit: Commit = {
+            id: randomUUID(),
+            parent: lastCommit?.id,
+            children: [],
+            authorId,
+            title,
+            description,
+            date: (new Date()).toISOString(),
+            changes
+        };
+
+        if (Object.keys(this.commits).length === 0) {
+            this.rootCommitId = newCommit.id
+            this.currentBranch = this.currentBranch ?? "main"
+            this.defaultBranch = this.currentBranch;
+        }
+        this.commits[newCommit.id] = newCommit;
+        this.branches[this.currentBranch as string] = newCommit.id;
+        this.currentCommitId = newCommit.id;
+
+        return newCommit;
+    }
+
     async checkout(commitId: string) {
         const commitItems = this.getCommitItems(commitId);
 
@@ -329,5 +329,64 @@ export class Project {
         }
 
         this.currentCommitId = commitId
+    }
+
+    async checkoutBranch(branchName: string) {
+        this.throwIfBranchNotFound(branchName);
+        const branchCommit = this.branches[branchName] as string;
+        if (!this.commits[branchCommit]) {
+            throw new Error(`Commit ${branchCommit} (branch ${branchName}) not found`);
+        }
+        await this.checkout(branchCommit);
+        this.currentBranch = branchName;
+    }
+
+    createBranch(branchName: string) {
+        if (!this.currentCommitId && Object.keys(this.commits).length > 0) {
+            throw new Error("No current commit");
+        }
+        this.throwIfBranchFound(branchName);
+        this.branches[branchName] = this.currentCommitId as string;
+        if (!this.defaultBranch) {
+            this.defaultBranch = branchName
+        }
+    }
+
+    deleteBranch(branchName: string) {
+        this.throwIfBranchNotFound(branchName);
+        if (Object.keys(this.branches).length === 1) {
+            throw new Error(`Cannot delete the only branch in the project`);
+        }
+        if (this.currentBranch === branchName) {
+            throw new Error(`Cannot delete the branch you're currently on`);
+        }
+        if (this.defaultBranch === branchName) {
+            throw new Error(`Cannot delete default branch`);
+        }
+        delete this.branches[branchName];
+    }
+
+    renameBranch(oldName: string, newName: string) {
+        this.throwIfBranchNotFound(oldName);
+        this.throwIfBranchFound(newName);
+        this.branches[newName] = this.branches[oldName] as string;
+        delete this.branches[oldName];
+    }
+
+    setDefaultBranch(branchName: string) {
+        this.throwIfBranchNotFound(branchName);
+        this.defaultBranch = branchName;
+    }
+
+    throwIfBranchNotFound(branchName: string) {
+        if (!this.branches[branchName]) {
+            throw new Error(`Branch ${branchName} not found`);
+        }
+    }
+
+    throwIfBranchFound(branchName: string) {
+        if (this.branches[branchName]) {
+            throw new Error(`Branch ${branchName} already exists`);
+        }
     }
 }
