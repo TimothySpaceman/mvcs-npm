@@ -67,11 +67,13 @@ export class FsStorageProvider implements IStorageProvider {
     }
 
     async readDir(dirPath: string, ignore: string[] = []): Promise<string[]> {
-        return await glob.glob("*", {cwd: dirPath, ignore, noext: false, absolute: false})
+        const results = await glob.glob(["**", ".**"], {cwd: dirPath, ignore, noext: false, absolute: false})
+        return results.filter(p => p != ".")
     }
 
     async readDirDeep(dirPath: string, ignore: string[] = []): Promise<string[]> {
-        return await glob.glob("**/*", {cwd: dirPath, ignore, noext: false, absolute: false})
+        const results = await glob.glob(["**/*", ".**", ".**/*"], {cwd: dirPath, ignore, noext: false, absolute: false})
+        return results.filter(p => p != ".")
     }
 
     async createDir(dirPath: string): Promise<string> {
@@ -83,7 +85,7 @@ export class FsStorageProvider implements IStorageProvider {
     }
 
     async deleteFileOrDir(path: string): Promise<void> {
-        await fs.promises.rm(path, {recursive: true})
+        await fs.promises.rm(path, {recursive: true, force: true})
     }
 
 }

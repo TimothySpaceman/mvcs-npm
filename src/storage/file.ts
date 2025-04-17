@@ -43,7 +43,7 @@ export class File implements IFile {
 
     async getHandle(): Promise<FileHandle> {
         try {
-            return await fs.promises.open(this.fullPath, 'r')
+            return await fs.promises.open(this.fullPath, "r")
         } catch (err: any) {
             throw new Error(`Failed to open file handle: ${err.message}`)
         }

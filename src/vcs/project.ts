@@ -4,7 +4,7 @@ import {randomUUID} from "crypto"
 import {BranchList, Commit, CommitList, Item, ItemChange, ItemList, Status} from "./types.js"
 
 export const PROJECT_DIR = ".mvcs"
-const CONTENT_DIR = "contents"
+export const CONTENT_DIR = "contents"
 const CONTENT_DUMMY = "DUMMY"
 
 type ProjectDump = {
@@ -82,7 +82,7 @@ export class Project {
         return project
     }
 
-    private toJSON(): ProjectDump {
+    toJSON(): ProjectDump {
         return {
             id: this.id,
             authorId: this.authorId,
@@ -98,7 +98,7 @@ export class Project {
         }
     }
 
-    private fromJSON(dump: ProjectDump) {
+    fromJSON(dump: ProjectDump) {
         const keysToImport = PROJECT_DUMP_KEYS.filter(k => Object.keys(dump).includes(k))
         for (const key of keysToImport) {
             (this as any)[key] = dump[key]
@@ -123,7 +123,7 @@ export class Project {
 
     async addContent(sourcePath: string) {
         const file = await this.sp.readFile(sourcePath)
-        const contentPath = `${file.name}-${randomUUID()}${file.extension ? "." + file.extension : ""}`
+        const contentPath = randomUUID()
         await this.sp.copyFile(sourcePath, path.join(this.workingDir, PROJECT_DIR, CONTENT_DIR, contentPath))
         return contentPath
     }
@@ -207,7 +207,7 @@ export class Project {
 
 
         if (!files) {
-            const currentFiles = await this.sp.readDirDeep(this.workingDir, [PROJECT_DIR])
+            const currentFiles = await this.sp.readDirDeep(this.workingDir, [`${PROJECT_DIR}/**`])
             const lastCommitFiles = Object.values(lastItems).map(i => i.path)
             files = Array.from(new Set([...currentFiles, ...lastCommitFiles]))
         } else {
@@ -315,7 +315,7 @@ export class Project {
         commitId = this.matchCommitId(commitId)
         const commitItems = this.getCommitItems(commitId)
 
-        const currentFilesAndDirs = await this.sp.readDirDeep(this.workingDir, [PROJECT_DIR])
+        const currentFilesAndDirs = await this.sp.readDirDeep(this.workingDir, [`${PROJECT_DIR}/**`])
         const currentFiles: string[] = []
         await Promise.all(currentFilesAndDirs.map(async p => {
             if (await this.sp.isFile(p)) {
@@ -374,7 +374,7 @@ export class Project {
             throw new Error(`Cannot delete the only branch in the project`)
         }
         if (this.currentBranch === branchName) {
-            throw new Error(`Cannot delete the branch you're currently on`)
+            throw new Error(`Cannot delete the branch you"re currently on`)
         }
         if (this.defaultBranch === branchName) {
             throw new Error(`Cannot delete default branch`)
