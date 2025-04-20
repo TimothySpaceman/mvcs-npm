@@ -123,6 +123,16 @@ export class Project {
 
     async addContent(sourcePath: string) {
         const file = await this.sp.readFile(sourcePath)
+        const hash = await file.getDataHash()
+
+        for (const item of Object.values(this.items)) {
+            const candidatePath = path.join(this.workingDir, PROJECT_DIR, CONTENT_DIR, item.content)
+            const candidateHash = await (await this.sp.readFile(candidatePath)).getDataHash()
+            if (candidateHash === hash) {
+                return item.content
+            }
+        }
+
         const contentPath = randomUUID()
         await this.sp.copyFile(sourcePath, path.join(this.workingDir, PROJECT_DIR, CONTENT_DIR, contentPath))
         return contentPath
@@ -217,7 +227,7 @@ export class Project {
         const newItems: ItemList = {}
         const changes: ItemChange[] = []
 
-        fileLoop: for (const filePath of files) {
+        for (const filePath of files) {
             if (await this.sp.isDir(filePath)) continue
 
             const lastItem = Object.values(lastItems).find(i => i.path === filePath)
@@ -241,18 +251,6 @@ export class Project {
                 newItems[newItem.id] = newItem
                 changes.push({from: lastItem.id, to: newItem.id})
                 continue
-            }
-
-            // Identical (Renamed / Copied / Moved) Files (to avoid redundant content files)
-            for (const item of Object.values(lastItems)) {
-                const lastContentPath = path.join(this.workingDir, PROJECT_DIR, CONTENT_DIR, item.content)
-                const lastHash = await (await this.sp.readFile(lastContentPath)).getDataHash()
-                if (newHash === lastHash) {
-                    const newItem = createItem(item.content, filePath)
-                    newItems[newItem.id] = newItem
-                    changes.push({to: newItem.id})
-                    continue fileLoop
-                }
             }
 
             // New Files
