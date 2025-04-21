@@ -7,7 +7,7 @@ jest.mock("crypto", () => {
     const actualCrypto = jest.requireActual("crypto")
     return {
         ...actualCrypto,
-        randomUUID: jest.fn(() => `uuid-${uuidCounter++}`),
+        randomUUID: jest.fn(() => `test-uuid-${uuidCounter++}`),
     }
 })
 
@@ -73,9 +73,9 @@ describe("Commits", () => {
     })
 
     test("Initial", async () => {
-        const commitId = "uuid-4"
-        const contentPath = "uuid-3"
-        const itemId = "uuid-2"
+        const commitId = "test-uuid-4"
+        const contentPath = "test-uuid-3"
+        const itemId = "test-uuid-2"
 
         await sp.createFile("file1.txt", Buffer.from("First line ever"))
 
@@ -90,7 +90,7 @@ describe("Commits", () => {
 
         expect(project.currentCommitId).toBe(commitId)
 
-        expect(project.commits[commitId]).toMatchObject({
+        expect(project.commits.get(commitId)).toMatchObject({
             "id": commitId,
             "children": [],
             "authorId": "JEST",
@@ -104,7 +104,7 @@ describe("Commits", () => {
             ]
         })
 
-        expect(project.items[itemId]).toMatchObject({
+        expect(project.items.get(itemId)).toMatchObject({
             "id": itemId,
             "content": contentPath,
             "path": "file1.txt"
@@ -116,11 +116,11 @@ describe("Commits", () => {
     })
 
     test("Changes", async () => {
-        const previousItemId = "uuid-2"
-        const newItemId = "uuid-5"
-        const newContentId = "uuid-6"
-        const newCommitId = "uuid-7"
-        const parentCommitId = "uuid-4"
+        const previousItemId = "test-uuid-2"
+        const newItemId = "test-uuid-5"
+        const newContentId = "test-uuid-6"
+        const newCommitId = "test-uuid-7"
+        const parentCommitId = "test-uuid-4"
 
         const file = await sp.readFile("file1.txt")
         await file.writeData(Buffer.from("First line ever\nSecond line"))
@@ -134,7 +134,7 @@ describe("Commits", () => {
         await project.save()
 
         expect(project.currentCommitId).toBe(newCommitId)
-        expect(project.commits[newCommitId]).toMatchObject({
+        expect(project.commits.get(newCommitId)).toMatchObject({
             id: newCommitId,
             parent: parentCommitId,
             children: [],
@@ -145,7 +145,7 @@ describe("Commits", () => {
             changes: [{from: previousItemId, to: newItemId}]
         })
 
-        expect(project.items[newItemId]).toMatchObject({
+        expect(project.items.get(newItemId)).toMatchObject({
             id: newItemId,
             content: newContentId,
             path: "file1.txt"
@@ -158,10 +158,10 @@ describe("Commits", () => {
     })
 
     test("Subdirs", async () => {
-        const newItemId = "uuid-8"
-        const newContentId = "uuid-9"
-        const newCommitId = "uuid-10"
-        const parentCommitId = "uuid-7"
+        const newItemId = "test-uuid-8"
+        const newContentId = "test-uuid-9"
+        const newCommitId = "test-uuid-10"
+        const parentCommitId = "test-uuid-7"
 
         await sp.createFile("subdir1/file2.txt", Buffer.from("First file in subdir1"))
 
@@ -175,7 +175,7 @@ describe("Commits", () => {
 
         expect(project.currentCommitId).toBe(newCommitId)
 
-        expect(project.commits[newCommitId]).toMatchObject({
+        expect(project.commits.get(newCommitId)).toMatchObject({
             id: newCommitId,
             parent: parentCommitId,
             children: [],
@@ -186,7 +186,7 @@ describe("Commits", () => {
             changes: [{to: newItemId}]
         })
 
-        expect(project.items[newItemId]).toMatchObject({
+        expect(project.items.get(newItemId)).toMatchObject({
             id: newItemId,
             content: newContentId,
             path: "subdir1\\file2.txt"
@@ -199,11 +199,11 @@ describe("Commits", () => {
     })
 
     test("Renamed/Moved Files", async () => {
-        const oldItemId = "uuid-5"
-        const newItemId = "uuid-11"
-        const newContentId = "uuid-6"
-        const newCommitId = "uuid-12"
-        const parentCommitId = "uuid-10"
+        const oldItemId = "test-uuid-5"
+        const newItemId = "test-uuid-11"
+        const newContentId = "test-uuid-6"
+        const newCommitId = "test-uuid-12"
+        const parentCommitId = "test-uuid-10"
 
         const prevFilesState = await sp.readDir(".", [".mvcs"])
 
@@ -221,7 +221,7 @@ describe("Commits", () => {
 
         expect(project.currentCommitId).toBe(newCommitId)
 
-        expect(project.commits[newCommitId]).toMatchObject({
+        expect(project.commits.get(newCommitId)).toMatchObject({
             id: newCommitId,
             parent: parentCommitId,
             children: [],
@@ -232,7 +232,7 @@ describe("Commits", () => {
             changes: [{from: oldItemId}, {to: newItemId}]
         })
 
-        expect(project.items[newItemId]).toMatchObject({
+        expect(project.items.get(newItemId)).toMatchObject({
             id: newItemId,
             content: newContentId,
             path: "subdir1\\file1.txt"
@@ -242,10 +242,10 @@ describe("Commits", () => {
     })
 
     test("Copies", async () => {
-        const newItemId = "uuid-13"
-        const newContentId = "uuid-6"
-        const newCommitId = "uuid-14"
-        const parentCommitId = "uuid-12"
+        const newItemId = "test-uuid-13"
+        const newContentId = "test-uuid-6"
+        const newCommitId = "test-uuid-14"
+        const parentCommitId = "test-uuid-12"
 
         await sp.copyFile("subdir1/file1.txt", "file1-copy.txt")
 
@@ -259,7 +259,7 @@ describe("Commits", () => {
 
         expect(project.currentCommitId).toBe(newCommitId)
 
-        expect(project.commits[newCommitId]).toMatchObject({
+        expect(project.commits.get(newCommitId)).toMatchObject({
             id: newCommitId,
             parent: parentCommitId,
             children: [],
@@ -270,7 +270,7 @@ describe("Commits", () => {
             changes: [{to: newItemId}]
         })
 
-        expect(project.items[newItemId]).toMatchObject({
+        expect(project.items.get(newItemId)).toMatchObject({
             id: newItemId,
             content: newContentId,
             path: "file1-copy.txt"
@@ -280,10 +280,10 @@ describe("Commits", () => {
     })
 
     test("Deletions", async () => {
-        const deletedItem1 = "uuid-8"
-        const deletedItem2 = "uuid-11"
-        const newCommitId = "uuid-15"
-        const parentCommitId = "uuid-14"
+        const deletedItem1 = "test-uuid-8"
+        const deletedItem2 = "test-uuid-11"
+        const newCommitId = "test-uuid-15"
+        const parentCommitId = "test-uuid-14"
 
         const filesToCommit = await sp.readDir(".", [".mvcs"])
         await sp.deleteFileOrDir("subdir1")
@@ -298,7 +298,7 @@ describe("Commits", () => {
 
         expect(project.currentCommitId).toBe(newCommitId)
 
-        expect(project.commits[newCommitId]).toMatchObject({
+        expect(project.commits.get(newCommitId)).toMatchObject({
             id: newCommitId,
             parent: parentCommitId,
             children: [],
@@ -332,14 +332,14 @@ describe("Commits", () => {
 
         const testCases: CheckoutTestCase[] = [
             {
-                id: "uuid-4",
+                id: "test-uuid-4",
                 filesList: ["file1.txt", ".mvcs"],
                 filesToCheck: {
                     "file1.txt": "First line ever",
                 }
             },
             {
-                id: "uuid-10",
+                id: "test-uuid-10",
                 filesList: ["file1.txt", "subdir1", "subdir1\\file2.txt", ".mvcs"],
                 filesToCheck: {
                     "file1.txt": "First line ever\nSecond line",
@@ -347,14 +347,14 @@ describe("Commits", () => {
                 }
             },
             {
-                id: "uuid-15",
+                id: "test-uuid-15",
                 filesList: ["file1-copy.txt", "subdir1", ".mvcs"],
                 filesToCheck: {
                     "file1-copy.txt": "First line ever\nSecond line"
                 }
             },
             {
-                id: "uuid-12",
+                id: "test-uuid-12",
                 filesList: ["subdir1", "subdir1\\file1.txt", "subdir1\\file2.txt", ".mvcs"],
                 filesToCheck: {
                     "subdir1\\file1.txt": "First line ever\nSecond line",

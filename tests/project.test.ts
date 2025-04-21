@@ -7,7 +7,7 @@ jest.mock("crypto", () => {
     const actualCrypto = jest.requireActual("crypto")
     return {
         ...actualCrypto,
-        randomUUID: jest.fn(() => `uuid-${uuidCounter++}`),
+        randomUUID: jest.fn(() => `test-uuid-${uuidCounter++}`),
     }
 })
 
@@ -70,7 +70,7 @@ describe("Projects", () => {
 
         const fileContent = await getProjectFile()
         expect(fileContent).toMatchObject({
-            "id": "uuid-0",
+            "id": "test-uuid-0",
             "authorId": "JEST",
             "title": "JEST_PROJECT",
             "branches": {},
@@ -82,8 +82,8 @@ describe("Projects", () => {
     test("Load", async () => {
         const project = await Project.fromFile(".", sp)
 
-        expect(project.toJSON()).toMatchObject({
-            id: "uuid-0",
+        expect(project.toJSON()).toEqual({
+            id: "test-uuid-0",
             authorId: "JEST",
             title: "JEST_PROJECT",
             description: undefined,

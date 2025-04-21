@@ -7,7 +7,7 @@ jest.mock("crypto", () => {
     const actualCrypto = jest.requireActual("crypto")
     return {
         ...actualCrypto,
-        randomUUID: jest.fn(() => `uuid-${uuidCounter++}`),
+        randomUUID: jest.fn(() => `test-uuid-${uuidCounter++}`),
     }
 })
 
@@ -38,6 +38,8 @@ const clearTmp = async () => {
         await sp.deleteFileOrDir(file)
     }
 }
+
+const objToMap = (obj: any) => new Map(Object.entries(obj))
 
 beforeAll(async () => {
     jest
@@ -73,7 +75,7 @@ describe("Branches", () => {
     })
 
     test("Initial", async () => {
-        const commitId = "uuid-4"
+        const commitId = "test-uuid-4"
 
         await sp.createFile("file1.txt", Buffer.from("First line ever"))
 
@@ -86,15 +88,15 @@ describe("Branches", () => {
 
         await project.save()
 
-        expect(project.branches).toMatchObject({
+        expect(project.branches).toEqual(objToMap({
             "main": commitId
-        })
+        }))
         expect(project.defaultBranch).toBe("main")
         expect(project.currentBranch).toBe("main")
     })
 
     test("Additional", async () => {
-        const commitId = "uuid-4"
+        const commitId = "test-uuid-4"
 
         expect(() => {
             project.createBranch("main")
@@ -103,10 +105,10 @@ describe("Branches", () => {
         project.createBranch("dev");
         await project.save()
 
-        expect(project.branches).toMatchObject({
+        expect(project.branches).toEqual(objToMap({
             "dev": commitId,
             "main": commitId
-        })
+        }))
         expect(project.defaultBranch).toBe("main")
         expect(project.currentBranch).toBe("main")
     })
@@ -123,8 +125,8 @@ describe("Branches", () => {
     })
 
     test("Checkout", async () => {
-        const mainId = "uuid-4"
-        const devId = "uuid-7"
+        const mainId = "test-uuid-4"
+        const devId = "test-uuid-7"
 
         await expect(async () => {
             await project.checkoutBranch("not-a-branch")
@@ -144,10 +146,10 @@ describe("Branches", () => {
         )
         await project.save()
 
-        expect(project.branches).toMatchObject({
+        expect(project.branches).toEqual(objToMap({
             "dev": devId,
             "main": mainId
-        })
+        }))
 
         expect(project.currentBranch).toBe("dev")
         expect(project.currentCommitId).toBe(devId)
@@ -160,8 +162,8 @@ describe("Branches", () => {
     })
 
     test("Rename", async () => {
-        const mainId = "uuid-4"
-        const devId = "uuid-7"
+        const mainId = "test-uuid-4"
+        const devId = "test-uuid-7"
 
         expect(() => {
             project.renameBranch("not-dev", "renamed-dev")
@@ -174,23 +176,23 @@ describe("Branches", () => {
         project.renameBranch("dev", "renamed-dev")
         await project.save()
 
-        expect(project.branches).toMatchObject({
+        expect(project.branches).toEqual(objToMap({
             "renamed-dev": devId,
             "main": mainId
-        })
+        }))
 
         project.renameBranch("renamed-dev", "dev")
         await project.save()
 
-        expect(project.branches).toMatchObject({
+        expect(project.branches).toEqual(objToMap({
             "dev": devId,
             "main": mainId
-        })
+        }))
     })
 
     test("Delete", async () => {
-        const mainId = "uuid-4"
-        const devId = "uuid-7"
+        const mainId = "test-uuid-4"
+        const devId = "test-uuid-7"
 
         await project.checkoutBranch("main")
 
@@ -210,8 +212,8 @@ describe("Branches", () => {
         project.deleteBranch("dev")
         await project.save()
 
-        expect(project.branches).toMatchObject({
+        expect(project.branches).toEqual(objToMap({
             "main": mainId
-        })
+        }))
     })
 })

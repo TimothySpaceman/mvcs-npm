@@ -4,9 +4,7 @@ export type Item = {
     path: string // Local path (including filename)
 }
 
-export type ItemList = {
-    [id: string]: Item
-}
+export type ItemList = Map<string, Item>
 
 export type ItemChange = {
     from?: string // Previous Item ID
@@ -24,13 +22,9 @@ export type Commit = {
     changes: ItemChange[] // List of changes in the commit
 }
 
-export type CommitList = {
-    [id: string]: Commit
-}
+export type CommitList = Map<string, Commit>
 
-export type BranchList = {
-    [name: string]: string
-}
+export type BranchList = Map<string, string>
 
 export type Status = {
     lastItems: ItemList,

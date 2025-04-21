@@ -12,18 +12,18 @@ type ProjectDump = {
     authorId: string
     title: string
     description?: string
-    branches: BranchList
+    branches: { [k: string]: string }
     defaultBranch?: string
     currentBranch?: string
-    commits: CommitList
+    commits: { [k: string]: Commit }
     rootCommitId?: string
     currentCommitId?: string
-    items: ItemList
+    items: { [k: string]: Item }
 }
 
-type ProjectDumpKeys = keyof ProjectDump
+type ProjectDumpKey = keyof ProjectDump
 
-const PROJECT_DUMP_KEYS: ProjectDumpKeys[] = [
+const PROJECT_DUMP_KEYS: ProjectDumpKey[] = [
     "id",
     "authorId",
     "title",
@@ -44,13 +44,13 @@ export class Project {
     title = "EMPTY_TITLE"
     description?: string
     workingDir = "EMPTY_WORKING_DIR"
-    branches: BranchList = {}
+    branches: BranchList = new Map<string, string>()
     defaultBranch?: string
     currentBranch?: string
-    commits: CommitList = {}
+    commits: CommitList = new Map<string, Commit>()
     rootCommitId?: string
     currentCommitId?: string
-    items: ItemList = {}
+    items: ItemList = new Map<string, Item>()
 
     private constructor(sp: IStorageProvider, workingDir: string, authorId?: string, title?: string, description?: string) {
         this.sp = sp
@@ -88,20 +88,25 @@ export class Project {
             authorId: this.authorId,
             title: this.title,
             description: this.description,
-            branches: this.branches,
+            branches: Object.fromEntries(this.branches),
             defaultBranch: this.defaultBranch,
             currentBranch: this.currentBranch,
-            commits: this.commits,
+            commits: Object.fromEntries(this.commits),
             rootCommitId: this.rootCommitId,
             currentCommitId: this.currentCommitId,
-            items: this.items
+            items: Object.fromEntries(this.items)
         }
     }
 
     fromJSON(dump: ProjectDump) {
-        const keysToImport = PROJECT_DUMP_KEYS.filter(k => Object.keys(dump).includes(k))
-        for (const key of keysToImport) {
+        const keysToImport = PROJECT_DUMP_KEYS.filter(k => k in dump)
+        const mapNames = ["branches", "commits", "items"]
+        const mapsToImport = keysToImport.filter(k => mapNames.includes(k))
+        for (const key of keysToImport.filter(k => !mapsToImport.includes(k))) {
             (this as any)[key] = dump[key]
+        }
+        for (const mapName of mapsToImport) {
+            (this as any)[mapName] = new Map(Object.entries(dump[mapName] as any))
         }
     }
 
@@ -129,7 +134,7 @@ export class Project {
         const file = await this.sp.readFile(sourcePath)
         const hash = await file.getDataHash()
 
-        for (const item of Object.values(this.items)) {
+        for (const item of this.items.values()) {
             const candidatePath = path.join(this.workingDir, PROJECT_DIR, CONTENT_DIR, item.content)
             const candidateHash = await (await this.sp.readFile(candidatePath)).getDataHash()
             if (candidateHash === hash) {
@@ -143,10 +148,10 @@ export class Project {
     }
 
     matchCommitId(idPart: string): string {
-        if (idPart.length < 6) {
-            throw new Error("You must specify at least 6 symbols of ID")
+        if (idPart.length < 7) {
+            throw new Error("You must specify at least 7 symbols of ID")
         }
-        const candidates = Object.keys(this.commits).filter(id => id.startsWith(idPart))
+        const candidates = [...this.commits.keys()].filter(id => id.startsWith(idPart))
         if (candidates.length === 0) {
             throw new Error(`No ID candidate for ${idPart} found`)
         }
@@ -159,27 +164,27 @@ export class Project {
     getCurrentCommit(): Commit | undefined {
         let currentCommitId: string | undefined = this.currentCommitId
 
-        if (!currentCommitId && Object.keys(this.commits).length > 0) {
+        if (!currentCommitId && this.commits.size > 0) {
             throw new Error("No current commit")
         }
 
-        if (currentCommitId && !this.commits[currentCommitId]) {
+        if (currentCommitId && !this.commits.has(currentCommitId)) {
             throw new Error("Current commit not found in the Commit List")
         }
 
-        return currentCommitId ? this.commits[currentCommitId] : undefined
+        return currentCommitId ? this.commits.get(currentCommitId) : undefined
     }
 
     getCommitItems(commitId: string): ItemList {
         commitId = this.matchCommitId(commitId)
-        const targetCommit = this.commits[commitId]
+        const targetCommit = this.commits.get(commitId)
         if (!targetCommit) {
             throw new Error(`Commit ${commitId} not found in the Commit List`)
         }
 
         const commitChain = this.buildCommitChain(targetCommit);
 
-        const commitItems: ItemList = {}
+        const commitItems: ItemList = new Map<string, Item>()
         for (const commit of commitChain) {
             this.applyCommitChanges(commit, commitItems);
         }
@@ -196,7 +201,7 @@ export class Project {
                 break
             }
 
-            const parentCommit = this.commits[commit.parent]
+            const parentCommit = this.commits.get(commit.parent)
             if (!parentCommit) {
                 throw new Error(`Parent commit ${commit.parent} not found in the Commit List`)
             }
@@ -211,13 +216,13 @@ export class Project {
         for (const change of commit.changes) {
             if (change.to) {
                 const itemId = change.to
-                if (!this.items[itemId]) {
+                if (!this.items.has(itemId)) {
                     throw new Error(`Item ${itemId} not found in the Items List`)
                 }
-                resultItems[itemId] = this.items[itemId]
+                resultItems.set(itemId, this.items.get(itemId) as Item)
             }
             if (change.from) {
-                delete resultItems[change.from]
+                resultItems.delete(change.from)
             }
         }
     }
@@ -243,22 +248,22 @@ export class Project {
         })
 
         const lastCommit = this.getCurrentCommit()
-        const lastItems: ItemList = lastCommit ? this.getCommitItems(lastCommit.id) : {}
+        const lastItems: ItemList = lastCommit ? this.getCommitItems(lastCommit.id) : new Map<string, Item>()
 
         if (!files) {
             const currentFiles = await this.getCurrentFiles()
-            const lastCommitFiles = Object.values(lastItems).map(i => i.path)
+            const lastCommitFiles = [...lastItems.values()].map(i => i.path)
             files = [...currentFiles, ...lastCommitFiles]
         }
         files = Array.from(new Set(files))
 
-        const newItems: ItemList = {}
+        const newItems: ItemList = new Map<string, Item>()
         const changes: ItemChange[] = []
 
         for (const filePath of files) {
             if (await this.sp.isDir(filePath)) continue
 
-            const lastItem = Object.values(lastItems).find(i => i.path === filePath)
+            const lastItem = [...lastItems.values()].find(i => i.path === filePath)
 
             // Removed Files
             if (!await this.sp.exists(filePath)) {
@@ -280,7 +285,7 @@ export class Project {
 
             // New Files
             const newItem = createItem(CONTENT_DUMMY, filePath)
-            newItems[newItem.id] = newItem
+            newItems.set(newItem.id, newItem)
             changes.push({from, to: newItem.id})
         }
 
@@ -295,11 +300,11 @@ export class Project {
         this.ensureValidBranchForCommit()
 
         const {newItems, changes}: Status = await this.status(files)
-        for (const newItem of Object.values(newItems)) {
+        for (const newItem of newItems.values()) {
             if (newItem.content === CONTENT_DUMMY) {
                 newItem.content = await this.addContent(newItem.path)
             }
-            this.items[newItem.id] = newItem
+            this.items.set(newItem.id, newItem)
         }
 
         const newCommit: Commit = {
@@ -313,30 +318,30 @@ export class Project {
             changes
         }
 
-        if (Object.keys(this.commits).length === 0) {
+        if (this.commits.size === 0) {
             this.rootCommitId = newCommit.id
             this.currentBranch = this.currentBranch ?? "main"
             this.defaultBranch = this.currentBranch
         }
-        this.commits[newCommit.id] = newCommit
-        this.branches[this.currentBranch as string] = newCommit.id
+        this.commits.set(newCommit.id, newCommit)
+        this.branches.set(this.currentBranch as string, newCommit.id)
         this.currentCommitId = newCommit.id
 
         return newCommit
     }
 
     ensureValidBranchForCommit(): void {
-        if (Object.keys(this.commits).length === 0) return;
+        if (this.commits.size === 0) return;
 
         const err = new Error("Cannot commit when not at the branch")
 
         if (!this.currentBranch) {
             throw err
         }
-        if (!this.branches[this.currentBranch]) {
+        if (!this.branches.has(this.currentBranch)) {
             throw err
         }
-        if (this.branches[this.currentBranch] !== this.currentCommitId) {
+        if (this.branches.get(this.currentBranch) !== this.currentCommitId) {
             throw err
         }
     }
@@ -346,7 +351,7 @@ export class Project {
         const commitItems = this.getCommitItems(commitId)
 
         const currentFiles: string[] = await this.getCurrentFiles()
-        const commitFiles = Object.values(commitItems).map(i => i.path)
+        const commitFiles = [...commitItems.values()].map(i => i.path)
 
         for (const filePath of currentFiles) {
             if (!commitFiles.includes(filePath)) {
@@ -354,7 +359,7 @@ export class Project {
             }
         }
 
-        for (const item of Object.values(commitItems)) {
+        for (const item of commitItems.values()) {
             const itemContentPath = path.join(this.workingDir, PROJECT_DIR, CONTENT_DIR, item.content)
             const itemContent = await this.sp.readFile(itemContentPath)
             const itemHash = await itemContent.getDataHash()
@@ -373,8 +378,8 @@ export class Project {
 
     async checkoutBranch(branchName: string) {
         this.throwIfBranchNotFound(branchName)
-        const branchCommit = this.branches[branchName] as string
-        if (!this.commits[branchCommit]) {
+        const branchCommit = this.branches.get(branchName) as string
+        if (!this.commits.has(branchCommit)) {
             throw new Error(`Commit ${branchCommit} (branch ${branchName}) not found`)
         }
         await this.checkout(branchCommit)
@@ -382,11 +387,11 @@ export class Project {
     }
 
     createBranch(branchName: string) {
-        if (!this.currentCommitId && Object.keys(this.commits).length > 0) {
+        if (!this.currentCommitId && this.commits.size > 0) {
             throw new Error("No current commit")
         }
         this.throwIfBranchFound(branchName)
-        this.branches[branchName] = this.currentCommitId as string
+        this.branches.set(branchName, this.currentCommitId as string)
         if (!this.defaultBranch) {
             this.defaultBranch = branchName
         }
@@ -394,7 +399,7 @@ export class Project {
 
     deleteBranch(branchName: string) {
         this.throwIfBranchNotFound(branchName)
-        if (Object.keys(this.branches).length === 1) {
+        if (this.branches.size === 1) {
             throw new Error(`Cannot delete the only branch in the project`)
         }
         if (this.currentBranch === branchName) {
@@ -403,20 +408,20 @@ export class Project {
         if (this.defaultBranch === branchName) {
             throw new Error(`Cannot delete default branch`)
         }
-        delete this.branches[branchName]
+        this.branches.delete(branchName)
     }
 
     renameBranch(oldName: string, newName: string) {
         this.throwIfBranchNotFound(oldName)
         this.throwIfBranchFound(newName)
-        this.branches[newName] = this.branches[oldName] as string
+        this.branches.set(newName, this.branches.get(oldName) as string)
         if (this.currentBranch === oldName) {
             this.currentBranch = newName
         }
         if (this.defaultBranch === oldName) {
             this.defaultBranch = newName
         }
-        delete this.branches[oldName]
+        this.branches.delete(oldName)
     }
 
     setDefaultBranch(branchName: string) {
@@ -425,13 +430,13 @@ export class Project {
     }
 
     throwIfBranchNotFound(branchName: string) {
-        if (!this.branches[branchName]) {
+        if (!this.branches.has(branchName)) {
             throw new Error(`Branch ${branchName} not found`)
         }
     }
 
     throwIfBranchFound(branchName: string) {
-        if (this.branches[branchName]) {
+        if (this.branches.has(branchName)) {
             throw new Error(`Branch ${branchName} already exists`)
         }
     }
