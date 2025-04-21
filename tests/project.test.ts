@@ -1,6 +1,6 @@
 import path from "node:path"
 import * as process from "process"
-import {FsStorageProvider, Project, PROJECT_DIR} from "../src"
+import {FsStorageProvider, Project, PROJECT_DIR} from "../src/index.js"
 
 let uuidCounter = 0
 jest.mock("crypto", () => {

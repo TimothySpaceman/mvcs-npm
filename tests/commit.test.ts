@@ -1,7 +1,6 @@
 import path from "node:path"
 import * as process from "process"
-import {CONTENT_DIR, FsStorageProvider, Project, PROJECT_DIR} from "../src"
-import {glob} from "glob"
+import {CONTENT_DIR, FsStorageProvider, Project, PROJECT_DIR} from "../src/index.js"
 
 let uuidCounter = 0
 jest.mock("crypto", () => {
@@ -13,7 +12,7 @@ jest.mock("crypto", () => {
 })
 
 const tmp = "tests-tmp"
-const sp = new FsStorageProvider()
+const sp: FsStorageProvider = new FsStorageProvider()
 
 const getProjectFile = async () => {
     const projectFile = await sp.readFile(path.join(PROJECT_DIR, "project.json"))
@@ -81,7 +80,7 @@ describe("Commits", () => {
         await sp.createFile("file1.txt", Buffer.from("First line ever"))
 
         await project.commit(
-            await glob.glob("**", {ignore: ".mvcs"}),
+            await sp.readDir(".", [".mvcs"]),
             "JEST",
             "Initial Commit",
             "First commit in this project"
@@ -127,7 +126,7 @@ describe("Commits", () => {
         await file.writeData(Buffer.from("First line ever\nSecond line"))
 
         await project.commit(
-            await glob.glob("**", {ignore: ".mvcs"}),
+            await sp.readDir(".", [".mvcs"]),
             "JEST",
             "Modified file1.txt",
         )
@@ -167,7 +166,7 @@ describe("Commits", () => {
         await sp.createFile("subdir1/file2.txt", Buffer.from("First file in subdir1"))
 
         await project.commit(
-            await glob.glob("**", {ignore: ".mvcs"}),
+            await sp.readDir(".", [".mvcs"]),
             "JEST",
             "Added subdir1"
         )
@@ -206,11 +205,11 @@ describe("Commits", () => {
         const newCommitId = "uuid-12"
         const parentCommitId = "uuid-10"
 
-        const prevFilesState = await glob.glob("**", {ignore: ".mvcs"})
+        const prevFilesState = await sp.readDir(".", [".mvcs"])
 
         await sp.moveFile("file1.txt", "subdir1/file1.txt")
 
-        const newFilesState = await glob.glob("**", {ignore: ".mvcs"})
+        const newFilesState = await sp.readDir(".", [".mvcs"])
 
         await project.commit(
             [...prevFilesState, ...newFilesState],
@@ -251,7 +250,7 @@ describe("Commits", () => {
         await sp.copyFile("subdir1/file1.txt", "file1-copy.txt")
 
         await project.commit(
-            await glob.glob("**", {ignore: ".mvcs"}),
+            await sp.readDir(".", [".mvcs"]),
             "JEST",
             "Copied file1"
         )
@@ -286,7 +285,7 @@ describe("Commits", () => {
         const newCommitId = "uuid-15"
         const parentCommitId = "uuid-14"
 
-        const filesToCommit = await glob.glob("**", {ignore: ".mvcs"})
+        const filesToCommit = await sp.readDir(".", [".mvcs"])
         await sp.deleteFileOrDir("subdir1")
 
         await project.commit(

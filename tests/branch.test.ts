@@ -1,7 +1,6 @@
 import path from "node:path"
 import * as process from "process"
-import {FsStorageProvider, Project, PROJECT_DIR} from "../src"
-import {glob} from "glob"
+import {FsStorageProvider, Project, PROJECT_DIR} from "../src/index.js"
 
 let uuidCounter = 0
 jest.mock("crypto", () => {
@@ -79,7 +78,7 @@ describe("Branches", () => {
         await sp.createFile("file1.txt", Buffer.from("First line ever"))
 
         await project.commit(
-            await glob.glob("**", {ignore: ".mvcs"}),
+            await sp.readDir(".", [".mvcs"]),
             "JEST",
             "Initial Commit",
             "First commit in this project"
@@ -138,7 +137,7 @@ describe("Branches", () => {
 
         await sp.createFile("dev.txt", Buffer.from("First line ever on dev branch"))
         await project.commit(
-            await glob.glob("**", {ignore: ".mvcs"}),
+            await sp.readDir(".", [".mvcs"]),
             "JEST",
             "Initial Commit",
             "First commit in this project"
