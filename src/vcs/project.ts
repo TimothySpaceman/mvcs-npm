@@ -1,7 +1,7 @@
 import {IStorageProvider} from "../storage/index.js"
 import path from "node:path"
 import {randomUUID} from "crypto"
-import {BranchList, Commit, CommitList, Difference, Item, ItemChange, ItemList, Status} from "./types.js"
+import {BranchList, Commit, CommitList, Difference, Item, ItemChange, ItemList} from "./types.js"
 
 export const PROJECT_DIR = ".mvcs"
 export const CONTENT_DIR = "contents"
@@ -276,60 +276,29 @@ export class Project {
         return items
     }
 
-    async status(files: string[] | undefined = undefined): Promise<Status> {
-        const createItem = (content: string, path: string): Item => ({
-            id: randomUUID(),
-            content,
-            path
-        })
-
-        const lastCommit = this.getCurrentCommit()
-        const lastItems: ItemList = lastCommit ? await this.getCommitItems(lastCommit.id) : new Map<string, Item>()
+    async status(files: string[] | undefined = undefined): Promise<Difference> {
+        const lastItems = this.currentCommitId ? await this.getCommitItems(this.currentCommitId) : new Map<string, Item>()
 
         if (!files) {
-            const currentFiles = await this.getCurrentFiles()
-            const lastCommitFiles = [...lastItems.values()].map(i => i.path)
-            files = [...currentFiles, ...lastCommitFiles]
-        }
-        files = Array.from(new Set(files))
-
-        const newItems: ItemList = new Map<string, Item>()
-        const changes: ItemChange[] = []
-
-        for (const filePath of files) {
-            if (await this.sp.isDir(filePath)) continue
-
-            const lastItem = [...lastItems.values()].find(i => i.path === filePath)
-
-            // Removed Files
-            if (!await this.sp.exists(filePath)) {
-                if (lastItem) changes.push({from: lastItem.id})
-                continue
+            files = await this.getCurrentFiles()
+        } else {
+            for (const item of lastItems.values()) {
+                if (!files.includes(item.path)) {
+                    lastItems.delete(item.id)
+                }
             }
+        }
 
-            let from = undefined
-
-            // Changed Files
-            const newHash = await (await this.sp.readFile(filePath)).getDataHash()
-            if (lastItem) {
-                const lastContentPath = this.getContentPath(lastItem.content)
-                const lastHash = await (await this.sp.readFile(lastContentPath)).getDataHash()
-
-                if (newHash === lastHash) continue;
-                from = lastItem.id
+        const existingFiles = []
+        for (const file of files) {
+            if (await this.sp.isFile(file)) {
+                existingFiles.push(file)
             }
-
-            // New Files
-            const newItem = createItem(CONTENT_DUMMY, filePath)
-            newItems.set(newItem.id, newItem)
-            changes.push({from, to: newItem.id})
         }
 
-        return {
-            lastItems,
-            newItems,
-            changes
-        }
+        const fileItems = await this.filesToItems(existingFiles)
+
+        return await this.diff(lastItems, fileItems)
     }
 
     async diff(beforeItems: ItemList, afterItems: ItemList): Promise<Difference> {
@@ -355,9 +324,9 @@ export class Project {
                 const afterItem = after.get(filePath)!
 
                 if (beforeItem.contentHash !== afterItem.contentHash) {
-                    result.changed.set(filePath, after.get(filePath)!)
+                    result.changed.set(filePath, afterItem)
                 } else {
-                    result.unchanged.set(filePath, after.get(filePath)!)
+                    result.unchanged.set(filePath, beforeItem)
                 }
             }
         }
@@ -368,12 +337,31 @@ export class Project {
     async commit(files: string[], authorId: string, title: string, description: string = ""): Promise<Commit> {
         this.ensureValidBranchForCommit()
 
-        const {newItems, changes}: Status = await this.status(files)
-        for (const newItem of newItems.values()) {
-            if (newItem.content === CONTENT_DUMMY) {
-                newItem.content = await this.addContent(newItem.path)
+        const {added, removed, changed} = await this.status(files)
+        const changes: ItemChange[] = []
+
+        for (const item of removed.values()) {
+            changes.push({from: item.id})
+        }
+
+        for (const item of added.values()) {
+            if (item.content === CONTENT_DUMMY) {
+                item.content = await this.addContent(item.path)
             }
-            this.items.set(newItem.id, newItem)
+            this.items.set(item.id, item)
+            changes.push({to: item.id})
+        }
+
+        const lastCommit = this.currentCommitId ? await this.getCommitItems(this.currentCommitId) : null
+        const lastItems = lastCommit ? Array.from(lastCommit.values()) : []
+        for (const item of changed.values()) {
+            if (item.content === CONTENT_DUMMY) {
+                item.content = await this.addContent(item.path)
+            }
+            this.items.set(item.id, item)
+
+            const prevItem = lastItems.find(i => i.path === item.path)!
+            changes.push({from: prevItem.id, to: item.id})
         }
 
         const newCommit: Commit = {

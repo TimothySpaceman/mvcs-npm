@@ -158,9 +158,9 @@ describe("Commits", () => {
     })
 
     test("Subdirs", async () => {
-        const newItemId = "test-uuid-8"
-        const newContentId = "test-uuid-9"
-        const newCommitId = "test-uuid-10"
+        const newItemId = "test-uuid-9"
+        const newContentId = "test-uuid-10"
+        const newCommitId = "test-uuid-11"
         const parentCommitId = "test-uuid-7"
 
         await sp.createFile("subdir1/file2.txt", Buffer.from("First file in subdir1"))
@@ -200,10 +200,10 @@ describe("Commits", () => {
 
     test("Renamed/Moved Files", async () => {
         const oldItemId = "test-uuid-5"
-        const newItemId = "test-uuid-11"
+        const newItemId = "test-uuid-14"
         const newContentId = "test-uuid-6"
-        const newCommitId = "test-uuid-12"
-        const parentCommitId = "test-uuid-10"
+        const newCommitId = "test-uuid-15"
+        const parentCommitId = "test-uuid-11"
 
         const prevFilesState = await sp.readDir(".", [".mvcs"])
 
@@ -242,10 +242,10 @@ describe("Commits", () => {
     })
 
     test("Copies", async () => {
-        const newItemId = "test-uuid-13"
+        const newItemId = "test-uuid-16"
         const newContentId = "test-uuid-6"
-        const newCommitId = "test-uuid-14"
-        const parentCommitId = "test-uuid-12"
+        const newCommitId = "test-uuid-19"
+        const parentCommitId = "test-uuid-15"
 
         await sp.copyFile("subdir1/file1.txt", "file1-copy.txt")
 
@@ -280,10 +280,10 @@ describe("Commits", () => {
     })
 
     test("Deletions", async () => {
-        const deletedItem1 = "test-uuid-8"
-        const deletedItem2 = "test-uuid-11"
-        const newCommitId = "test-uuid-15"
-        const parentCommitId = "test-uuid-14"
+        const deletedItem1 = "test-uuid-9"
+        const deletedItem2 = "test-uuid-14"
+        const newCommitId = "test-uuid-21"
+        const parentCommitId = "test-uuid-19"
 
         const filesToCommit = await sp.readDir(".", [".mvcs"])
         await sp.deleteFileOrDir("subdir1")
@@ -339,7 +339,7 @@ describe("Commits", () => {
                 }
             },
             {
-                id: "test-uuid-10",
+                id: "test-uuid-11", 
                 filesList: ["file1.txt", "subdir1", "subdir1\\file2.txt", ".mvcs"],
                 filesToCheck: {
                     "file1.txt": "First line ever\nSecond line",
@@ -347,14 +347,14 @@ describe("Commits", () => {
                 }
             },
             {
-                id: "test-uuid-15",
+                id: "test-uuid-21",
                 filesList: ["file1-copy.txt", "subdir1", ".mvcs"],
                 filesToCheck: {
                     "file1-copy.txt": "First line ever\nSecond line"
                 }
             },
             {
-                id: "test-uuid-12",
+                id: "test-uuid-15",
                 filesList: ["subdir1", "subdir1\\file1.txt", "subdir1\\file2.txt", ".mvcs"],
                 filesToCheck: {
                     "subdir1\\file1.txt": "First line ever\nSecond line",
