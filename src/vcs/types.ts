@@ -2,6 +2,7 @@ export type Item = {
     id: string // Item ID
     content: string // URL for a corresponding file in storage
     path: string // Local path (including filename)
+    contentHash?: string
 }
 
 export type ItemList = Map<string, Item>
@@ -30,4 +31,11 @@ export type Status = {
     lastItems: ItemList,
     newItems: ItemList,
     changes: ItemChange[]
+}
+
+export type Difference = {
+    added: ItemList,
+    removed: ItemList,
+    changed: ItemList,
+    unchanged: ItemList,
 }

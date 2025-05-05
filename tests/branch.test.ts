@@ -126,7 +126,7 @@ describe("Branches", () => {
 
     test("Checkout", async () => {
         const mainId = "test-uuid-4"
-        const devId = "test-uuid-7"
+        const devId = "test-uuid-8"
 
         await expect(async () => {
             await project.checkoutBranch("not-a-branch")
@@ -163,7 +163,7 @@ describe("Branches", () => {
 
     test("Rename", async () => {
         const mainId = "test-uuid-4"
-        const devId = "test-uuid-7"
+        const devId = "test-uuid-8"
 
         expect(() => {
             project.renameBranch("not-dev", "renamed-dev")
@@ -192,7 +192,7 @@ describe("Branches", () => {
 
     test("Delete", async () => {
         const mainId = "test-uuid-4"
-        const devId = "test-uuid-7"
+        const devId = "test-uuid-8"
 
         await project.checkoutBranch("main")
 

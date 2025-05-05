@@ -1,7 +1,7 @@
 import {IStorageProvider} from "../storage/index.js"
 import path from "node:path"
 import {randomUUID} from "crypto"
-import {BranchList, Commit, CommitList, Item, ItemChange, ItemList, Status} from "./types.js"
+import {BranchList, Commit, CommitList, Difference, Item, ItemChange, ItemList} from "./types.js"
 
 export const PROJECT_DIR = ".mvcs"
 export const CONTENT_DIR = "contents"
@@ -130,12 +130,16 @@ export class Project {
         return path.join(this.workingDir, PROJECT_DIR, "project.json");
     }
 
+    getContentPath(content: string) {
+        return path.join(this.workingDir, PROJECT_DIR, CONTENT_DIR, content)
+    }
+
     async addContent(sourcePath: string): Promise<string> {
         const file = await this.sp.readFile(sourcePath)
         const hash = await file.getDataHash()
 
         for (const item of this.items.values()) {
-            const candidatePath = path.join(this.workingDir, PROJECT_DIR, CONTENT_DIR, item.content)
+            const candidatePath = this.getContentPath(item.content)
             const candidateHash = await (await this.sp.readFile(candidatePath)).getDataHash()
             if (candidateHash === hash) {
                 return item.content
@@ -143,7 +147,7 @@ export class Project {
         }
 
         const contentPath = randomUUID()
-        await this.sp.copyFile(sourcePath, path.join(this.workingDir, PROJECT_DIR, CONTENT_DIR, contentPath))
+        await this.sp.copyFile(sourcePath, this.getContentPath(contentPath))
         return contentPath
     }
 
@@ -158,7 +162,7 @@ export class Project {
         if (candidates.length > 1) {
             throw new Error(`Multiple ID candidates were found for ${idPart}`)
         }
-        return candidates.pop() as string
+        return candidates.pop()!
     }
 
     getCurrentCommit(): Commit | undefined {
@@ -175,7 +179,7 @@ export class Project {
         return currentCommitId ? this.commits.get(currentCommitId) : undefined
     }
 
-    getCommitItems(commitId: string): ItemList {
+    async getCommitItems(commitId: string): Promise<ItemList> {
         commitId = this.matchCommitId(commitId)
         const targetCommit = this.commits.get(commitId)
         if (!targetCommit) {
@@ -187,6 +191,11 @@ export class Project {
         const commitItems: ItemList = new Map<string, Item>()
         for (const commit of commitChain) {
             this.applyCommitChanges(commit, commitItems);
+        }
+
+        for (const item of commitItems.values()) {
+            const file = await this.sp.readFile(this.getContentPath(item.content))
+            item.contentHash = await file.getDataHash()
         }
 
         return commitItems
@@ -219,7 +228,7 @@ export class Project {
                 if (!this.items.has(itemId)) {
                     throw new Error(`Item ${itemId} not found in the Items List`)
                 }
-                resultItems.set(itemId, this.items.get(itemId) as Item)
+                resultItems.set(itemId, this.items.get(itemId)!)
             }
             if (change.from) {
                 resultItems.delete(change.from)
@@ -240,71 +249,119 @@ export class Project {
         return currentFiles;
     }
 
-    async status(files: string[] | undefined = undefined): Promise<Status> {
-        const createItem = (content: string, path: string): Item => ({
+    async filesToItems(files: string[]): Promise<ItemList> {
+        const createItem = (content: string, path: string, contentHash?: string): Item => ({
             id: randomUUID(),
             content,
-            path
+            path,
+            contentHash
         })
 
-        const lastCommit = this.getCurrentCommit()
-        const lastItems: ItemList = lastCommit ? this.getCommitItems(lastCommit.id) : new Map<string, Item>()
-
-        if (!files) {
-            const currentFiles = await this.getCurrentFiles()
-            const lastCommitFiles = [...lastItems.values()].map(i => i.path)
-            files = [...currentFiles, ...lastCommitFiles]
-        }
-        files = Array.from(new Set(files))
-
-        const newItems: ItemList = new Map<string, Item>()
-        const changes: ItemChange[] = []
+        const items: ItemList = new Map<string, Item>()
 
         for (const filePath of files) {
-            if (await this.sp.isDir(filePath)) continue
+            if (filePath.includes(PROJECT_DIR)) continue
 
-            const lastItem = [...lastItems.values()].find(i => i.path === filePath)
+            const file = await this.sp.readFile(filePath)
 
-            // Removed Files
-            if (!await this.sp.exists(filePath)) {
-                if (lastItem) changes.push({from: lastItem.id})
-                continue
-            }
+            const item = createItem(
+                CONTENT_DUMMY,
+                filePath,
+                await file.getDataHash()
+            )
 
-            let from = undefined
-
-            // Changed Files
-            const newHash = await (await this.sp.readFile(filePath)).getDataHash()
-            if (lastItem) {
-                const lastContentPath = path.join(this.workingDir, PROJECT_DIR, CONTENT_DIR, lastItem.content)
-                const lastHash = await (await this.sp.readFile(lastContentPath)).getDataHash()
-
-                if (newHash === lastHash) continue;
-                from = lastItem.id
-            }
-
-            // New Files
-            const newItem = createItem(CONTENT_DUMMY, filePath)
-            newItems.set(newItem.id, newItem)
-            changes.push({from, to: newItem.id})
+            items.set(item.id, item)
         }
 
-        return {
-            lastItems,
-            newItems,
-            changes
+        return items
+    }
+
+    async status(files: string[] | undefined = undefined): Promise<Difference> {
+        const lastItems = this.currentCommitId ? await this.getCommitItems(this.currentCommitId) : new Map<string, Item>()
+
+        if (!files) {
+            files = await this.getCurrentFiles()
+        } else {
+            for (const item of lastItems.values()) {
+                if (!files.includes(item.path)) {
+                    lastItems.delete(item.id)
+                }
+            }
         }
+
+        const existingFiles = []
+        for (const file of files) {
+            if (await this.sp.isFile(file)) {
+                existingFiles.push(file)
+            }
+        }
+
+        const fileItems = await this.filesToItems(existingFiles)
+
+        return await this.diff(lastItems, fileItems)
+    }
+
+    async diff(beforeItems: ItemList, afterItems: ItemList): Promise<Difference> {
+        const before = new Map(Array.from(beforeItems.entries()).map(([_, i]) => [i.path, i]))
+        const after = new Map(Array.from(afterItems.entries()).map(([_, i]) => [i.path, i]))
+        const paths = new Set([...before.keys(), ...after.keys()])
+
+        const result: Difference = {
+            added: new Map<string, Item>(),
+            removed: new Map<string, Item>(),
+            changed: new Map<string, Item>(),
+            unchanged: new Map<string, Item>()
+        }
+
+        for (const filePath of paths) {
+            const inBefore = before.has(filePath), inAfter = after.has(filePath)
+            if (!inBefore && inAfter) {
+                result.added.set(filePath, after.get(filePath)!)
+            } else if (inBefore && !inAfter) {
+                result.removed.set(filePath, before.get(filePath)!)
+            } else if (inBefore && inAfter) {
+                const beforeItem = before.get(filePath)!
+                const afterItem = after.get(filePath)!
+
+                if (beforeItem.contentHash !== afterItem.contentHash) {
+                    result.changed.set(filePath, afterItem)
+                } else {
+                    result.unchanged.set(filePath, beforeItem)
+                }
+            }
+        }
+
+        return result
     }
 
     async commit(files: string[], authorId: string, title: string, description: string = ""): Promise<Commit> {
         this.ensureValidBranchForCommit()
 
-        const {newItems, changes}: Status = await this.status(files)
-        for (const newItem of newItems.values()) {
-            if (newItem.content === CONTENT_DUMMY) {
-                newItem.content = await this.addContent(newItem.path)
+        const {added, removed, changed} = await this.status(files)
+        const changes: ItemChange[] = []
+
+        for (const item of removed.values()) {
+            changes.push({from: item.id})
+        }
+
+        for (const item of added.values()) {
+            if (item.content === CONTENT_DUMMY) {
+                item.content = await this.addContent(item.path)
             }
-            this.items.set(newItem.id, newItem)
+            this.items.set(item.id, item)
+            changes.push({to: item.id})
+        }
+
+        const lastCommit = this.currentCommitId ? await this.getCommitItems(this.currentCommitId) : null
+        const lastItems = lastCommit ? Array.from(lastCommit.values()) : []
+        for (const item of changed.values()) {
+            if (item.content === CONTENT_DUMMY) {
+                item.content = await this.addContent(item.path)
+            }
+            this.items.set(item.id, item)
+
+            const prevItem = lastItems.find(i => i.path === item.path)!
+            changes.push({from: prevItem.id, to: item.id})
         }
 
         const newCommit: Commit = {
@@ -324,7 +381,7 @@ export class Project {
             this.defaultBranch = this.currentBranch
         }
         this.commits.set(newCommit.id, newCommit)
-        this.branches.set(this.currentBranch as string, newCommit.id)
+        this.branches.set(this.currentBranch!, newCommit.id)
         this.currentCommitId = newCommit.id
 
         return newCommit
@@ -348,7 +405,7 @@ export class Project {
 
     async checkout(commitId: string) {
         commitId = this.matchCommitId(commitId)
-        const commitItems = this.getCommitItems(commitId)
+        const commitItems = await this.getCommitItems(commitId)
 
         const currentFiles: string[] = await this.getCurrentFiles()
         const commitFiles = [...commitItems.values()].map(i => i.path)
@@ -360,7 +417,7 @@ export class Project {
         }
 
         for (const item of commitItems.values()) {
-            const itemContentPath = path.join(this.workingDir, PROJECT_DIR, CONTENT_DIR, item.content)
+            const itemContentPath = this.getContentPath(item.content)
             const itemContent = await this.sp.readFile(itemContentPath)
             const itemHash = await itemContent.getDataHash()
 
@@ -378,7 +435,7 @@ export class Project {
 
     async checkoutBranch(branchName: string) {
         this.throwIfBranchNotFound(branchName)
-        const branchCommit = this.branches.get(branchName) as string
+        const branchCommit = this.branches.get(branchName)!
         if (!this.commits.has(branchCommit)) {
             throw new Error(`Commit ${branchCommit} (branch ${branchName}) not found`)
         }
@@ -391,7 +448,7 @@ export class Project {
             throw new Error("No current commit")
         }
         this.throwIfBranchFound(branchName)
-        this.branches.set(branchName, this.currentCommitId as string)
+        this.branches.set(branchName, this.currentCommitId!)
         if (!this.defaultBranch) {
             this.defaultBranch = branchName
         }
@@ -414,7 +471,7 @@ export class Project {
     renameBranch(oldName: string, newName: string) {
         this.throwIfBranchNotFound(oldName)
         this.throwIfBranchFound(newName)
-        this.branches.set(newName, this.branches.get(oldName) as string)
+        this.branches.set(newName, this.branches.get(oldName)!)
         if (this.currentBranch === oldName) {
             this.currentBranch = newName
         }
